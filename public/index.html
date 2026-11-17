@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Class Brands Operator</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23171512'/%3E%3Ctext x='16' y='21.5' font-family='Arial' font-weight='700' font-size='14' text-anchor='middle' fill='%23F2EDE4'%3ECB%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <form id="gate-form" class="gate-card">
+    <div class="gate-mark">CB</div>
+    <h1>Class Brands Operator</h1>
+    <p>Enter the dashboard password.</p>
+    <input id="gate-pw" type="password" autocomplete="current-password" placeholder="Password" required>
+    <label class="gate-rem"><input id="gate-remember" type="checkbox" checked> Remember on this device</label>
+    <button type="submit" id="gate-btn">Open dashboard</button>
+    <p class="gate-err" id="gate-err" hidden>That password didn't work. Try again.</p>
+  </form>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="top">
+    <div class="top-in">
+      <div class="brand"><span class="mark">CB</span><span>Class Brands <b>Operator</b></span></div>
+      <nav class="tabs" id="tabs" aria-label="Clients"></nav>
+      <div class="fresh" id="fresh"></div>
+    </div>
+  </header>
+  <main class="main" id="main"></main>
+  <footer class="foot">
+    <details>
+      <summary>How these numbers are worked out</summary>
+      <ul>
+        <li>All numbers come from Triple Whale for each shop and refresh automatically about every 3 hours. "Latest day" is the last full day (US time); "today" is partial.</li>
+        <li><b>Blended spend</b> = all ad platforms. <b>Order revenue</b> = gross sales − discounts + shipping + taxes (Triple Whale's Order Revenue). <b>Blended ROAS</b> = order revenue ÷ blended spend. <b>MER</b> = blended spend ÷ order revenue. <b>NC CPA</b> = blended spend ÷ new-customer orders.</li>
+        <li><b>Our creatives</b> = Meta ads matching each client's tag (shown in each client's header). Meta ROAS and CPA are Meta-reported (from Triple Whale). <b>NVP</b> = share of the ad's visitors who were new to the site.</li>
+        <li><b>Run rate</b> = our spend month-to-date ÷ days elapsed × days in month. Target = $150K a month per client. <b>Projected fee</b> = base + rate × run rate.</li>
+        <li><b>Launches</b> count our tagged ads by their first spend day; a hit is an ad that has spent $1K+ in its life so far.</li>
+      </ul>
+    </details>
+  </footer>
+</div>
+<div id="tip" class="tip" hidden></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
