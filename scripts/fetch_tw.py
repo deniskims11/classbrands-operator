@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Pull every client's numbers from the Triple Whale SQL API into raw/<key>.json.
 
-Env: TW_API_KEY (x-api-key with access to every shop) and CBO_CONFIG (JSON; locally
-./config.json). Per shop:
+Env: TW_API_KEYS (JSON {client key: Triple Whale API key}, one key per shop) and/or
+TW_API_KEY (fallback key used for any client not in TW_API_KEYS), plus CBO_CONFIG (JSON;
+locally ./config.json). Per shop:
   summary  – daily blended spend / order revenue / orders / new customers (summary_metrics_tvf)
   meta     – daily Meta spend + Meta-reported value + visitors, total and for our tagged ads
   ads      – per-ad totals for yesterday / last 7 days / month to date / last month
@@ -45,9 +46,10 @@ def sql(shop, query, start, end, key, tries=4):
 
 
 def main():
-    key = os.environ.get("TW_API_KEY")
-    if not key:
-        sys.exit("TW_API_KEY is not set")
+    keys = json.loads(os.environ.get("TW_API_KEYS") or "{}")
+    fallback = os.environ.get("TW_API_KEY")
+    if not keys and not fallback:
+        sys.exit("Neither TW_API_KEYS nor TW_API_KEY is set")
     cfg = config()
     # Latest full day in US time (shops report in their own US time zone).
     us_now = datetime.now(timezone.utc) - timedelta(hours=8)
@@ -66,6 +68,11 @@ def main():
     for c in cfg["clients"]:
         shop, tag = c["shop"], f"({c['tag_sql']})"
         print(f"== {c['name']} ({shop})", flush=True)
+        key = keys.get(c["key"]) or fallback
+        if not key:
+            print(f"   no API key for {c['key']}", flush=True)
+            failures.append(c["name"])
+            continue
         try:
             summary = sql(shop, f"""
                 SELECT toString(event_date) AS d,
