@@ -49,7 +49,7 @@ export default function AdPreview({ ad, onClose }) {
           </span>
           {ad.managerUrl && (
             <a href={ad.managerUrl} target="_blank" rel="noopener noreferrer" onClick={e => openExternal(e, ad.managerUrl)}
-              style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: "#244134", borderRadius: 6, padding: "6px 10px", textDecoration: "none", whiteSpace: "nowrap" }}>Open in Ads Manager ↗</a>
+              style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: "#171512", borderRadius: 6, padding: "6px 10px", textDecoration: "none", whiteSpace: "nowrap" }}>Open in Ads Manager ↗</a>
           )}
         </div>
       </div>

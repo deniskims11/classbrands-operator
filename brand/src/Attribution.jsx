@@ -16,7 +16,7 @@ import AdPreview, { PlayBadge, playable } from "./AdPreview.jsx";
 const META = "#0284C7";
 const TW = "#399844";
 const SPEND = "#C9DCC0";
-const INK = "#244134";
+const INK = "#171512";
 const MUTED = "#6B7280";
 const LINE = "#E5E7EB";
 

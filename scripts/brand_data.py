@@ -95,11 +95,14 @@ def pull(c, key, start, end):
 def build(c, daily, ads, first, start, end):
     key, biz = c["key"], c.get("business_ids", {})
     configure(c)
-    # Start at the first day with new-customer data, so NC ratios never divide by spend the pixel missed.
+    # Start once there is both new-customer data and spend: NC ratios never divide by spend the
+    # pixel missed, and charts don't open on an empty stretch.
     nc_days = [r["d"][:10] for r in daily if n(r["nc_rev"]) > 0]
-    if nc_days and min(nc_days) > start.isoformat():
-        start = date.fromisoformat(min(nc_days))
-        daily = [r for r in daily if r["d"][:10] >= start.isoformat()]
+    spend_days = [r["d"][:10] for r in daily if n(r["spend"]) > 0]
+    cut = max(min(nc_days or [start.isoformat()]), min(spend_days or [start.isoformat()]))
+    if cut > start.isoformat():
+        start = date.fromisoformat(cut)
+        daily = [r for r in daily if r["d"][:10] >= cut]
     per = defaultdict(list)
     for r in daily:
         per[r["ad"]].append(r)

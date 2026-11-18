@@ -62,7 +62,7 @@ export function groupRows(rows, gran) {
 
 // Metrics the chart can plot (each on its own scale, like Moby's metric picker).
 export const DAILY_METRICS = [
-  { key: "roas", label: "ROAS", color: "#2E7D4F", fmt: v => `${v.toFixed(2)}x` },
+  { key: "roas", label: "ROAS", color: "#1F5FD0", fmt: v => `${v.toFixed(2)}x` },
   { key: "ncroas", label: "NCROAS", color: "#0ea5e9", fmt: v => `${v.toFixed(2)}x`, nc: true },
   { key: "cpa", label: "CPA", color: "#d97706", fmt: v => `$${v.toFixed(0)}` },
   { key: "cpc", label: "CPC (outbound)", color: "#16a34a", fmt: v => `$${v.toFixed(2)}` },
@@ -104,7 +104,7 @@ export default function DailyView({ ads, days, start, end, roasLabel = "ROAS", h
         <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 7, padding: 2 }}>
           {[["day", "Daily"], ["week", "Weekly"], ["month", "Monthly"]].map(([k, l]) => (
             <button key={k} onClick={() => setGran(k)} style={{ padding: "4px 12px", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11, fontWeight: 600,
-              background: gran === k ? "#2E7D4F" : "transparent", color: gran === k ? "#fff" : "#6B7280" }}>{l}</button>
+              background: gran === k ? "#1F5FD0" : "transparent", color: gran === k ? "#fff" : "#6B7280" }}>{l}</button>
           ))}
         </div>
         {gran !== "day" && <span style={{ fontSize: 10, color: "#9CA3AF" }}>{gran === "week" ? "Mon–Sun weeks" : "calendar months"}, clipped to the selected range · arrows = {cmpName} change</span>}
@@ -172,7 +172,7 @@ export default function DailyView({ ads, days, start, end, roasLabel = "ROAS", h
             <tr key={r.date}>
               <td style={{ ...td, textAlign: "left", fontWeight: 600, color: "#1F2937" }}>{label(r)}</td>
               <td style={{ ...td, fontWeight: 600 }}>{money(r.spend)}{chg(i, "spend")}</td><td style={td}>{money(r.rev)}{chg(i, "rev")}</td>
-              <td style={{ ...td, color: "#2E7D4F", fontWeight: 600 }}>{x2(r.roas)}{chg(i, "roas")}</td>
+              <td style={{ ...td, color: "#1F5FD0", fontWeight: 600 }}>{x2(r.roas)}{chg(i, "roas")}</td>
               {hasNc && <td style={td}>{money(r.nc_rev)}{chg(i, "nc_rev")}</td>}{hasNc && <td style={{ ...td, color: "#0369a1", fontWeight: 600 }}>{x2(r.ncroas)}{chg(i, "ncroas")}</td>}
               <td style={td}>{Math.round(r.orders).toLocaleString()}{chg(i, "orders")}</td><td style={td}>{pct(r.cvr)}{chg(i, "cvr")}</td><td style={td}>{r.aov == null ? "—" : money(r.aov)}{chg(i, "aov")}</td><td style={td}>{r.cpa == null ? "—" : money(r.cpa)}{chg(i, "cpa", true)}</td>
               <td style={td}>{pct(r.ctr)}{chg(i, "ctr")}</td><td style={td}>{r.cpc == null ? "—" : `$${r.cpc.toFixed(2)}`}{chg(i, "cpc", true)}</td>

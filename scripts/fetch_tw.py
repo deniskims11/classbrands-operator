@@ -171,6 +171,7 @@ def main():
                 SELECT toString(ad_id) AS id,
                   argMax(ad_name, event_date) AS name, argMax(adset_name, event_date) AS adset,
                   argMax(campaign_name, event_date) AS campaign,
+                  argMaxIf(ad_image_url, event_date, ad_image_url != '') AS img,
                   replaceOne(toString(argMax(account_id, event_date)), 'act_', '') AS account,
                   max(toUInt8({tag})) AS ours,
                   sumIf(spend, event_date = '{e}') AS spend_y,

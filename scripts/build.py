@@ -89,7 +89,8 @@ def client_block(c, raw, target):
     lvl = "ok" if (pace or 0) >= 1 else "warn" if (pace or 0) >= 0.5 else "bad"
     s["status_level"], s["status"] = lvl, {"ok": "On pace", "warn": "Behind target", "bad": "Far behind target"}[lvl]
     if M["ours"] == 0:
-        s["status"], s["status_level"] = "No tagged spend", "bad"
+        s["status"], s["status_level"] = ("No spend this month", "warn") if raw["launches"] else ("Not launched yet", "idle")
+    s["progress"], s["elapsed"] = div(M["ours"], target), div(E, D)
 
     # Alerts: plain-language flags the operator should look at.
     alerts = []
@@ -117,7 +118,7 @@ def client_block(c, raw, target):
         acct = str(a.get("account") or "")
         x = {
             "id": str(a["id"]), "name": a.get("name") or "", "adset": a.get("adset") or "", "campaign": a.get("campaign") or "",
-            "act": acct, "biz": biz.get(acct, ""), "ours": int(f(a.get("ours"))) == 1,
+            "act": acct, "biz": biz.get(acct, ""), "ours": int(f(a.get("ours"))) == 1, "img": a.get("img") or "",
             "spend_y": f(a.get("spend_y")), "spend_7": f(a.get("spend_7")), "spend_m": f(a.get("spend_m")), "spend_pm": f(a.get("spend_pm")),
             "roas_7": div(f(a.get("rev_7")), f(a.get("spend_7"))), "roas_m": div(f(a.get("rev_m")), f(a.get("spend_m"))),
             "cpa_7": div(f(a.get("spend_7")), f(a.get("orders_7"))), "cpa_m": div(f(a.get("spend_m")), f(a.get("orders_m"))),
@@ -173,6 +174,8 @@ def main():
     for k in ("runrate", "target", "needed_per_day", "fee_so_far", "fee_proj", "fee_target", "fee_pm", "base", "today_meta", "today_rev", "meta_runrate"):
         T[k] = add((k,))
     T["pace"] = div(T["runrate"], T["target"])
+    T["progress"] = div(T["mtd"]["ours"], T["target"])
+    T["elapsed"] = clients[0]["summary"]["elapsed"]
     T["as_of"] = max(cl["summary"]["as_of"] for cl in clients)
     T["days_left"] = clients[0]["summary"]["days_left"]
     gen = (RAW / "fetched_at.txt").read_text().strip() if (RAW / "fetched_at.txt").exists() else datetime.now(timezone.utc).isoformat()

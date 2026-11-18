@@ -1,12 +1,12 @@
 :root {
-  --nr-green: #244134;
-  --nr-green-2: #27382E;
-  --nr-accent: #399844;
-  --nr-mint: #D5E8CC;
-  --nr-cream: #F8FFF5;
-  --nr-bg: #FFFFFF;
-  --nr-line: #E5E7EB;
-  --nr-muted: #6B7280;
+  --nr-green: #171512;
+  --nr-green-2: #24211C;
+  --nr-accent: #1F5FD0;
+  --nr-mint: #EFEBE4;
+  --nr-cream: #F6F4F0;
+  --nr-bg: #F6F4F0;
+  --nr-line: #E6E1D8;
+  --nr-muted: #6E685E;
   --im8-wine: #50000B;
   --im8-wine-deep: #1A0205;
   --im8-cream: #FAF6F2;
@@ -17,8 +17,8 @@
   --im8-text: #1A0205;
   --im8-muted: #8a6f68;
 
-  --font-body: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-heading: 'Outfit', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 
   font-family: var(--font-body);

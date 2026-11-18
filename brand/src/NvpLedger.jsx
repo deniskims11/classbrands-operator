@@ -101,7 +101,7 @@ export default function NvpLedger({ ads, days, baselineNc = 0, roasLabel = "ROAS
   const ncColor = (v) => (v == null ? "#9CA3AF" : v >= baselineNc ? "#15803d" : "#b91c1c");
   const btn = (on) => ({
     padding: "5px 12px", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 12, fontWeight: 600,
-    background: on ? "#244134" : "transparent", color: on ? "#fff" : "#6B7280",
+    background: on ? "#171512" : "transparent", color: on ? "#fff" : "#6B7280",
   });
   const th = { padding: "6px 8px", fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.4, textAlign: "right", whiteSpace: "nowrap" };
   const td = { padding: "7px 8px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap" };

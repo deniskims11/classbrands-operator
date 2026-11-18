@@ -110,7 +110,7 @@
       sub ? h('div', {class: 's'}, sub) : null,
       opts.bar != null ? h('div', {class: 'bar'}, h('i', {style: `width:${Math.min(100, Math.max(0, opts.bar * 100))}%;background:${opts.barColor || css('--ink')}`})) : null);
   }
-  const paceColor = (lvl) => css(lvl === 'ok' ? '--good' : lvl === 'warn' ? '--warn' : '--bad');
+  const paceColor = (lvl) => css(lvl === 'ok' ? '--good' : lvl === 'warn' ? '--warn' : lvl === 'idle' ? '--dim' : '--bad');
   const pill = (lvl, text) => h('span', {class: 'pill ' + lvl}, text);
 
   function alertList(items) {
@@ -132,7 +132,8 @@
     const ticks = y.ticks(4);
     const probe = svg.append('text').text(ticks.map(o.yfmt).sort((a, b) => b.length - a.length)[0]);
     const ml = (probe.node().getComputedTextLength() || 34) + 10; probe.remove();
-    const m = {l: ml, r: 10, t: 8, b: 22};
+    const labelled = o.endLabels && W >= 460;
+    const m = {l: ml, r: labelled ? 96 : 10, t: 8, b: 22};
     x.range([m.l, W - m.r]); y.range([H - m.b, m.t]);
     svg.append('g').selectAll('line').data(ticks).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', css('--grid'));
     svg.append('g').selectAll('text').data(ticks).join('text').attr('x', m.l - 8).attr('y', (t) => y(t) + 4).attr('text-anchor', 'end').text(o.yfmt);
@@ -146,6 +147,13 @@
       const last = [...s.values].reverse().find((p) => ok(p.v));
       if (last) svg.append('circle').attr('cx', x(parse(last.d))).attr('cy', y(last.v)).attr('r', 3.5).attr('fill', s.color).attr('stroke', css('--panel')).attr('stroke-width', 2);
     });
+    if (labelled) {  // direct labels at the line ends, nudged apart so they never collide
+      const ends = series.map((s) => ({s, p: [...s.values].reverse().find((q) => ok(q.v))})).filter((e) => e.p).map((e) => ({name: e.s.name, y: y(e.p.v), x: x(parse(e.p.d))})).sort((a, b) => a.y - b.y);
+      ends.forEach((e, i) => { if (i && e.y - ends[i - 1].y < 13) e.y = ends[i - 1].y + 13; });
+      const over = ends.length ? ends[ends.length - 1].y - (H - m.b) : 0;
+      if (over > 0) { ends.forEach((e) => { e.y -= over; }); for (let i = ends.length - 2; i >= 0; i--) if (ends[i + 1].y - ends[i].y < 13) ends[i].y = ends[i + 1].y - 13; }
+      svg.append('g').attr('class', 'end-labels').selectAll('text').data(ends).join('text').attr('x', (e) => e.x + 9).attr('y', (e) => e.y + 4).text((e) => e.name);
+    }
     const dates = [...new Set(all.map((p) => p.d))].sort();
     const cross = svg.append('line').attr('y1', m.t).attr('y2', H - m.b).attr('stroke', css('--dim')).attr('stroke-dasharray', '3 3').style('opacity', 0);
     const tip = $('#tip');
@@ -188,71 +196,97 @@
     return `https://adsmanager.facebook.com/adsmanager/manage/ads/edit/standalone?act=${a.act}${b}&selected_ad_ids=${a.id}`;
   }
   function adCell(a, showChip) {
-    return h('td', {}, h('a', {class: 'adname', href: adsManager(a), target: '_blank', rel: 'noopener', title: a.name},
-      showChip && a.ours ? h('span', {class: 'ours-chip'}, 'OURS') : null, a.name || a.id), h('span', {class: 'adset', title: a.adset}, a.adset));
+    const thumb = a.img ? h('img', {class: 'thumb', src: a.img, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => { e.target.replaceWith(h('span', {class: 'thumb none'})); }}) : h('span', {class: 'thumb none'});
+    return h('td', {}, h('div', {class: 'adcell'}, thumb, h('div', {class: 'adtext'},
+      h('a', {class: 'adname', href: adsManager(a), target: '_blank', rel: 'noopener', title: a.name}, showChip && a.ours ? h('span', {class: 'ours-chip'}, 'OURS') : null, a.name || a.id),
+      h('span', {class: 'adset', title: a.adset}, a.adset))));
   }
-  /* sortable table */
-  function table(cols, rows, sortKey) {
-    let key = sortKey, dir = -1;
-    const thead = h('thead'), tbody = h('tbody');
+  // A number with a quiet second line, for dense table cells.
+  const two = (main, sub) => h('td', {}, h('div', {class: 'two'}, h('span', {}, main), h('small', {}, sub)));
+  // Spend with a thin bar scaled to the largest row.
+  const spendBar = (key, rows) => {
+    const max = Math.max(1, ...rows.map((r) => r[key] || 0));
+    return (r) => h('td', {class: r[key] ? '' : 'zero'}, h('div', {class: 'barcell'}, h('span', {}, F.money(r[key])), h('i', {}, h('b', {style: `width:${Math.max(0, (r[key] || 0) / max * 100)}%`}))));
+  };
+  /* sortable table; `limit` shows the first rows with a button for the rest */
+  function table(cols, rows, sortKey, limit) {
+    let key = sortKey, dir = -1, open = !limit;
+    const thead = h('thead'), tbody = h('tbody'), more = h('button', {class: 'more', type: 'button', onclick: () => { open = !open; draw(); }});
     const draw = () => {
-      thead.replaceChildren(h('tr', {}, cols.map((c) => h('th', {class: c.sort ? 'sortable' : '', onclick: c.sort ? () => { dir = key === c.sort ? -dir : -1; key = c.sort; draw(); } : null},
-        c.label + (key === c.sort ? (dir < 0 ? ' ↓' : ' ↑') : '')))));
+      thead.replaceChildren(h('tr', {}, cols.map((c) => h('th', {class: (c.sort ? 'sortable' : '') + (key === c.sort && c.sort ? ' on' : ''), 'aria-sort': key === c.sort && c.sort ? (dir < 0 ? 'descending' : 'ascending') : null, onclick: c.sort ? () => { dir = key === c.sort ? -dir : -1; key = c.sort; draw(); } : null},
+        c.label + (key === c.sort && c.sort ? (dir < 0 ? ' ↓' : ' ↑') : '')))));
       const sorted = key ? [...rows].sort((a, b) => dir * ((ok(a[key]) ? a[key] : -Infinity) - (ok(b[key]) ? b[key] : -Infinity))) : rows;
-      tbody.replaceChildren(...sorted.map((r) => h('tr', {}, cols.map((c) => c.cell ? c.cell(r) : h('td', {}, c.fmt(r[c.sort]))))));
+      const shown = open ? sorted : sorted.slice(0, limit);
+      tbody.replaceChildren(...shown.map((r) => h('tr', {}, cols.map((c) => c.cell ? c.cell(r) : h('td', {class: r[c.sort] === 0 ? 'zero' : ''}, c.fmt(r[c.sort]))))));
+      more.hidden = !limit || rows.length <= limit;
+      more.textContent = open ? 'Show fewer' : `Show all ${rows.length}`;
     };
     draw();
-    return h('div', {class: 'tw'}, h('table', {}, thead, tbody));
+    return h('div', {}, h('div', {class: 'tw'}, h('table', {}, thead, tbody)), more);
+  }
+
+  /* the headline panel: spend on our creatives against the monthly target */
+  function hero(o) {
+    const pct = Math.min(100, Math.max(0, (o.progress || 0) * 100)), tick = Math.min(100, (o.elapsed || 0) * 100);
+    return h('section', {class: 'hero'},
+      h('div', {class: 'hero-l'}, 'Spend on our creatives, month to date'),
+      h('div', {class: 'hero-v'}, F.money(o.value)),
+      h('div', {class: 'hero-s'}, o.sub),
+      h('div', {class: 'track', role: 'img', 'aria-label': `${F.pct0(o.progress)} of the monthly target, ${F.pct0(o.elapsed)} of the month gone`},
+        h('i', {style: `width:${pct}%;background:${paceColor(o.level)}`}), h('b', {style: `left:${tick}%`})),
+      h('div', {class: 'track-cap'}, h('span', {}, h('strong', {}, F.pct0(o.progress)), ' of ', F.money(o.target), ' target'), h('span', {}, F.pct0(o.elapsed), ' of the month gone')),
+      h('dl', {class: 'stats'}, o.stats.map(([k, v, note]) => h('div', {}, h('dt', {}, k), h('dd', {}, v), note ? h('small', {}, note) : null))));
+  }
+  const levelOf = (p) => p >= 1 ? 'ok' : p >= 0.5 ? 'warn' : 'bad';
+  // Issues and wins side by side; a side with nothing in it is left out.
+  function attention(items) {
+    const issues = items.filter((x) => x[1] !== 'ok'), wins = items.filter((x) => x[1] === 'ok');
+    const cards = [issues.length ? h('div', {class: 'card'}, h('h2', {}, 'Needs attention'), alertList(issues)) : null, wins.length ? h('div', {class: 'card'}, h('h2', {}, 'Going well'), alertList(wins)) : null].filter(Boolean);
+    return cards.length ? h('div', {class: 'grid2'}, cards) : null;
   }
 
   /* ---------- overview ---------- */
   function overview(main) {
     const T = DATA.totals, C = DATA.clients;
-    main.append(
-      h('div', {class: 'page-h'}, h('h1', {}, 'All clients'), h('span', {class: 'page-sub'}, 'Month to date through ' + F.day(T.as_of) + ' · ' + T.days_left + ' days left')),
-      h('p', {class: 'lede'}, 'Clients spent ', h('b', {}, F.money(T.mtd.meta)), ' on Meta this month for ', h('b', {}, F.money(T.mtd.rev)),
-        ' in Meta-reported revenue (', h('b', {}, F.x(T.mtd.roas)), ' ROAS). ', h('b', {}, F.money(T.mtd.ours)), ' ran on our creatives (',
-        h('b', {}, F.pct(T.mtd.ours_share)), ' of Meta spend), pacing to ', h('b', {}, F.money(T.runrate)), ' against a ', h('b', {}, F.money(T.target)), ' target.'));
-    main.append(h('div', {class: 'tiles'},
-      tile('Meta spend, latest day', F.money(T.y.meta), [delta(T.y_vs7.meta), ' vs 7-day avg · today so far ', h('b', {}, F.short(T.today_meta))]),
-      tile('Meta ROAS, latest day', F.x(T.y.roas), [delta(T.y_vs7.roas), ' vs 7-day avg']),
-      tile('Meta spend, month', F.money(T.mtd.meta), [delta(T.mtd_vs_pm.meta), ' vs same days last month']),
-      tile('Meta revenue, month', F.money(T.mtd.rev), ['ROAS ', h('b', {}, F.x(T.mtd.roas)), ' · CPA ', h('b', {}, F.money2(T.mtd.cpa))]),
-      tile('Our creatives, month', F.money(T.mtd.ours), [h('b', {}, F.pct(T.mtd.ours_share)), ' of Meta spend · ', delta(T.mtd_vs_pm.ours), ' vs same days last month'], {ours: true}),
-      tile('Our run rate', F.money(T.runrate), [h('b', {}, F.pct0(T.pace)), ' of ', F.short(T.target), ' · needs ', h('b', {}, F.short(T.needed_per_day)), '/day'], {ours: true, bar: T.pace, barColor: paceColor(T.pace >= 1 ? 'ok' : T.pace >= 0.5 ? 'warn' : 'bad')}),
-      tile('Fees, projected month', F.money(T.fee_proj), ['so far ', h('b', {}, F.money(T.fee_so_far)), ' · at target ', h('b', {}, F.money(T.fee_target))], {ours: true})));
+    main.append(h('div', {class: 'page-h'}, h('h1', {}, 'All clients'), h('span', {class: 'page-sub'}, 'Meta only · month to date through ' + F.day(T.as_of) + ' · ' + T.days_left + ' days left')));
+    main.append(h('div', {class: 'top-grid'},
+      hero({value: T.mtd.ours, progress: T.progress, elapsed: T.elapsed, target: T.target, level: levelOf(T.pace),
+        sub: [h('b', {}, F.pct(T.mtd.ours_share)), ' of Meta spend · ', delta(T.mtd_vs_pm.ours), ' vs same days last month'],
+        stats: [['Run rate', F.short(T.runrate), F.pct0(T.pace) + ' of target'], ['Needed per day', F.short(T.needed_per_day), T.days_left + ' days left'], ['Fees so far', F.money(T.fee_so_far)], ['Fees projected', F.money(T.fee_proj), 'at target ' + F.short(T.fee_target)]]}),
+      h('div', {class: 'tiles c2'},
+        tile('Meta spend, month', F.money(T.mtd.meta), [delta(T.mtd_vs_pm.meta), ' vs same days last month']),
+        tile('Meta revenue, month', F.money(T.mtd.rev), [delta(T.mtd_vs_pm.rev), ' vs same days last month']),
+        tile('Meta ROAS, month', F.x(T.mtd.roas), ['CPA ', h('b', {}, F.money2(T.mtd.cpa))]),
+        tile('Meta spend, latest day', F.money(T.y.meta), [delta(T.y_vs7.meta), ' vs 7-day avg · today ', h('b', {}, F.short(T.today_meta))]))));
 
-    const alerts = C.flatMap((c) => c.summary.alerts.map(([lvl, text]) => [c.name, lvl, text]));
     const rows = C.map((c, i) => ({c, i, ...flat(c)}));
     const cols = [
       {label: 'Client', cell: (r) => h('td', {}, h('button', {class: 'cl', onclick: () => go(slug(r.c.name))}, h('span', {class: 'dot', style: 'background:' + color(r.i)}), r.c.name))},
-      {label: 'Full dashboard', cell: (r) => h('td', {}, fullLink(r.c, 'Open ↗'))},
       {label: 'Status', cell: (r) => h('td', {}, pill(r.c.summary.status_level, r.c.summary.status))},
       {label: 'Meta spend, 30d', cell: (r) => h('td', {}, spark(r.c.daily.slice(-30).map((d) => d.meta), color(r.i)))},
-      {label: 'Meta, latest', sort: 'y_meta', fmt: F.money},
-      {label: 'vs 7d', sort: 'y_vs7', cell: (r) => h('td', {}, delta(r.y_vs7))},
-      {label: 'ROAS, latest', sort: 'y_roas', fmt: F.x},
+      {label: 'Latest day', sort: 'y_meta', cell: (r) => two(F.money(r.y_meta), delta(r.y_vs7, false, 'vs 7d'))},
       {label: 'Meta, month', sort: 'm_meta', fmt: F.money},
-      {label: 'ROAS, month', sort: 'm_roas', fmt: F.x},
-      {label: 'CPA, month', sort: 'm_cpa', fmt: F.money2},
-      {label: 'Ours, month', sort: 'm_ours', fmt: F.money},
-      {label: 'Ours share', sort: 'm_share', fmt: F.pct},
-      {label: 'Ours NVP', sort: 'm_ours_nvp', fmt: F.pct0},
-      {label: 'Pace to $150K', sort: 'pace', cell: (r) => h('td', {}, h('span', {class: 'pace'}, h('span', {class: 'bar'}, h('i', {style: `width:${Math.min(100, (r.pace || 0) * 100)}%;background:${paceColor(r.c.summary.status_level)}`})), F.pct0(r.pace)))},
+      {label: 'ROAS', sort: 'm_roas', cell: (r) => two(F.x(r.m_roas), F.x(r.y_roas) + ' latest')},
+      {label: 'CPA', sort: 'm_cpa', fmt: F.money2},
+      {label: 'Our creatives', sort: 'm_ours', cell: (r) => r.m_ours ? two(F.money(r.m_ours), F.pct(r.m_share) + ' of Meta') : h('td', {class: 'zero'}, '$0')},
+      {label: 'Our NVP', sort: 'm_ours_nvp', fmt: F.pct0},
+      {label: 'Pace to $150K', sort: 'pace', cell: (r) => h('td', {}, r.m_ours ? h('span', {class: 'pace'}, h('span', {class: 'bar'}, h('i', {style: `width:${Math.min(100, (r.pace || 0) * 100)}%;background:${paceColor(r.c.summary.status_level)}`})), F.pct0(r.pace)) : h('span', {class: 'zero'}, '—'))},
       {label: 'Fee, projected', sort: 'fee_proj', fmt: F.money},
+      {label: '', cell: (r) => h('td', {}, fullLink(r.c, 'Open ↗'))},
     ];
-    main.append(h('div', {class: 'card'}, h('h2', {}, 'Clients'), h('p', {class: 'sub'}, 'Meta only. "Latest" is the last full day. ROAS and CPA are Meta-reported. Ours = Meta ads carrying our tag. NVP = new-visitor share of our ads\' traffic.'), table(cols, rows, 'm_meta')));
-    main.append(h('div', {class: 'card'}, h('h2', {}, 'Needs attention'), alertList(alerts)));
+    main.append(h('div', {class: 'card'}, h('div', {class: 'card-h'}, h('h2', {}, 'Clients'), h('p', {class: 'sub'}, 'Click a name for its summary, or Open for the full creative dashboard. ROAS and CPA are Meta-reported.')), table(cols, rows, 'm_ours')));
+    const box = attention(C.flatMap((c) => c.summary.alerts.map(([lvl, text]) => [c.name, lvl, text])));
+    if (box) main.append(box);
     const series = C.map((c, i) => ({name: c.name, color: color(i), values: c.daily.map((d) => ({d: d.d, v: d.meta}))}));
     const oursSeries = C.map((c, i) => ({name: c.name, color: color(i), values: c.daily.map((d) => ({d: d.d, v: d.ours}))}));
     main.append(h('div', {class: 'grid2'},
-      chartCard('Daily Meta spend', 'Last 60 days', series, {label: 'Daily Meta spend by client', yfmt: F.short, tfmt: F.money}),
-      chartCard('Daily spend on our creatives', 'Meta ads carrying our tag, last 60 days', oursSeries, {label: 'Daily spend on our creatives by client', yfmt: F.short, tfmt: F.money})));
+      chartCard('Daily Meta spend', 'Last 60 days', series, {label: 'Daily Meta spend by client', yfmt: F.short, tfmt: F.money, endLabels: true}),
+      chartCard('Daily spend on our creatives', 'Meta ads carrying our tag, last 60 days', oursSeries, {label: 'Daily spend on our creatives by client', yfmt: F.short, tfmt: F.money, endLabels: true})));
   }
   // Natural Rems keeps its own site; the other brands' dashboards live under b/<key>/.
-  function fullLink(c, text) {
+  function fullLink(c, text, primary) {
     const ext = /^https?:/.test(c.dashboard);
-    return h('a', {class: 'full-link', href: c.dashboard, target: ext ? '_blank' : null, rel: ext ? 'noopener' : null}, text);
+    return h('a', {class: 'full-link' + (primary ? ' primary' : ''), href: c.dashboard, target: ext ? '_blank' : null, rel: ext ? 'noopener' : null}, text);
   }
   function flat(c) {
     const s = c.summary;
@@ -262,68 +296,70 @@
 
   /* ---------- client ---------- */
   function clientView(main, c, i) {
-    const s = c.summary, col = color(i);
-    main.append(h('div', {class: 'page-h'}, h('h1', {}, c.name), pill(s.status_level, s.status), fullLink(c, 'Open full dashboard ↗'),
-      h('span', {class: 'page-sub'}, `${c.shop} · fee ${F.pct0(s.rate)} of spend on our creatives${s.base ? ' + ' + F.money(s.base) + ' base' : ''} · ours = ${c.tag_label} · latest day ${F.day(s.as_of)}`)));
+    const s = c.summary, col = color(i), live = s.mtd.ours > 0 || s.status_level !== 'idle';
+    main.append(h('div', {class: 'client-h'},
+      h('div', {}, h('div', {class: 'page-h'}, h('h1', {}, c.name), pill(s.status_level, s.status)),
+        h('p', {class: 'page-sub'}, `Fee ${F.pct0(s.rate)} of spend on our creatives${s.base ? ' + ' + F.money(s.base) + ' base' : ''} · ours = ${c.tag_label} · latest day ${F.day(s.as_of)}`)),
+      fullLink(c, 'Open full dashboard ↗', true)));
 
-    main.append(h('h3', {class: 'sec-h'}, 'Meta · latest day'), h('div', {class: 'tiles'},
+    const ourTiles = h('div', {class: 'tiles c2'},
+      tile('Our Meta ROAS, month', F.x(s.mtd.ours_roas), ['account ', h('b', {}, F.x(s.mtd.roas)), ' · CPA ', h('b', {}, F.money2(s.mtd.ours_cpa))]),
+      tile('Our new-visitor share', F.pct0(s.mtd.ours_nvp), ['account ', h('b', {}, F.pct0(s.mtd.nvp))]),
+      tile('Launches, month', F.int(s.launch_m.launched), [h('b', {}, F.int(s.launch_m.hit_1k)), ' hit $1K+ · last month ', h('b', {}, s.launch_pm.hit_1k + '/' + s.launch_pm.launched)]),
+      tile('Fee, projected month', F.money(s.fee_proj), ['so far ', h('b', {}, F.money(s.fee_so_far)), ' · last month ', h('b', {}, F.money(s.fee_pm))]));
+    main.append(live ? h('div', {class: 'top-grid'},
+      hero({value: s.mtd.ours, progress: s.progress, elapsed: s.elapsed, target: s.target, level: s.status_level,
+        sub: [h('b', {}, F.pct(s.mtd.ours_share)), ' of Meta spend · latest day ', h('b', {}, F.money(s.y.ours)), ' ', delta(s.y_vs7.ours)],
+        stats: [['Run rate', F.short(s.runrate), F.pct0(s.pace) + ' of target'], ['Needed per day', F.short(s.needed_per_day), s.days_left + ' days left'], ['Fee so far', F.money(s.fee_so_far)], ['Fee at target', F.money(s.fee_target)]]}), ourTiles)
+      : h('div', {class: 'card idle'}, h('h2', {}, 'No creatives launched yet'), h('p', {class: 'sub'}, 'They will appear here automatically once they start spending.')));
+
+    main.append(h('h3', {class: 'sec-h'}, 'Meta · month to date'), h('div', {class: 'tiles c5'},
+      tile('Meta spend', F.money(s.mtd.meta), [delta(s.mtd_vs_pm.meta), ' vs same days last month']),
+      tile('Meta revenue', F.money(s.mtd.rev), [delta(s.mtd_vs_pm.rev), ' vs same days last month']),
+      tile('Meta ROAS', F.x(s.mtd.roas), [delta(s.mtd_vs_pm.roas), ' vs same days last month']),
+      tile('CPA', F.money2(s.mtd.cpa), [delta(s.mtd_vs_pm.cpa, true), ' · ', h('b', {}, F.int(s.mtd.orders)), ' purchases']),
+      tile('CPM', F.money2(s.mtd.cpm), [delta(s.mtd_vs_pm.cpm, true), ' · CTR ', h('b', {}, F.pct(s.mtd.ctr))])));
+    main.append(h('h3', {class: 'sec-h'}, 'Meta · latest day'), h('div', {class: 'tiles c5'},
       tile('Meta spend', F.money(s.y.meta), [delta(s.y_vs7.meta), ' vs 7-day avg · today ', h('b', {}, F.short(s.today_meta))]),
       tile('Meta revenue', F.money(s.y.rev), [delta(s.y_vs7.rev), ' vs 7-day avg · today ', h('b', {}, F.short(s.today_rev))]),
       tile('Meta ROAS', F.x(s.y.roas), [delta(s.y_vs7.roas), ' vs ', h('b', {}, F.x(s.avg7.roas)), ' 7-day']),
       tile('CPA', F.money2(s.y.cpa), [delta(s.y_vs7.cpa, true), ' vs 7-day avg · ', h('b', {}, F.int(s.y.orders)), ' purchases']),
       tile('New-visitor share', F.pct0(s.y.nvp), ['7-day ', h('b', {}, F.pct0(s.avg7.nvp))])));
 
-    main.append(h('h3', {class: 'sec-h'}, 'Meta · month to date'), h('div', {class: 'tiles'},
-      tile('Meta spend', F.money(s.mtd.meta), [delta(s.mtd_vs_pm.meta), ' vs same days last month · run rate ', h('b', {}, F.short(s.meta_runrate))]),
-      tile('Meta revenue', F.money(s.mtd.rev), [delta(s.mtd_vs_pm.rev), ' vs same days last month']),
-      tile('Meta ROAS', F.x(s.mtd.roas), [delta(s.mtd_vs_pm.roas), ' vs same days last month']),
-      tile('CPA', F.money2(s.mtd.cpa), [delta(s.mtd_vs_pm.cpa, true), ' · ', h('b', {}, F.int(s.mtd.orders)), ' purchases']),
-      tile('CPM', F.money2(s.mtd.cpm), [delta(s.mtd_vs_pm.cpm, true), ' · CTR ', h('b', {}, F.pct(s.mtd.ctr)), ' · NVP ', h('b', {}, F.pct0(s.mtd.nvp))])));
+    const box = attention(s.alerts.map(([lvl, t]) => [null, lvl, t]));
+    if (box) main.append(box);
 
-    main.append(h('h3', {class: 'sec-h'}, 'Our creatives'), h('div', {class: 'tiles'},
-      tile('Spend, month', F.money(s.mtd.ours), [h('b', {}, F.pct(s.mtd.ours_share)), ' of Meta · latest day ', h('b', {}, F.money(s.y.ours)), ' ', delta(s.y_vs7.ours)], {ours: true}),
-      tile('Run rate vs target', F.money(s.runrate), [h('b', {}, F.pct0(s.pace)), ' of ', F.short(s.target), ' · needs ', h('b', {}, F.short(s.needed_per_day)), '/day for ', s.days_left, ' days'], {ours: true, bar: s.pace, barColor: paceColor(s.status_level)}),
-      tile('Meta ROAS, month', F.x(s.mtd.ours_roas), ['account ', h('b', {}, F.x(s.mtd.roas)), ' · CPA ', h('b', {}, F.money2(s.mtd.ours_cpa))], {ours: true}),
-      tile('New-visitor share', F.pct0(s.mtd.ours_nvp), ['account ', h('b', {}, F.pct0(s.mtd.nvp)), ' · month to date'], {ours: true}),
-      tile('Launches, month', F.int(s.launch_m.launched), [h('b', {}, F.int(s.launch_m.hit_1k)), ' hit $1K+ · last month ', h('b', {}, s.launch_pm.hit_1k + '/' + s.launch_pm.launched)], {ours: true}),
-      tile('Fee, projected month', F.money(s.fee_proj), ['so far ', h('b', {}, F.money(s.fee_so_far)), ' · last month ', h('b', {}, F.money(s.fee_pm))], {ours: true})));
-
-    main.append(h('div', {class: 'card'}, h('h2', {}, 'Needs attention'), alertList(s.alerts.map(([lvl, t]) => [null, lvl, t]))));
-
-    const d = c.daily;
+    const d = c.daily, spendSeries = [{name: 'Meta', color: col, area: true, values: d.map((x) => ({d: x.d, v: x.meta}))}];
+    if (live) spendSeries.push({name: 'Our creatives', color: css('--ours'), values: d.map((x) => ({d: x.d, v: x.ours}))});
+    const nvpSeries = [{name: 'Account', color: col, values: d.map((x) => ({d: x.d, v: x.vis ? x.nv / x.vis : null}))}];
+    if (live) nvpSeries.push({name: 'Our creatives', color: css('--ours'), values: d.map((x) => ({d: x.d, v: x.ours_vis ? x.ours_nv / x.ours_vis : null}))});
     main.append(h('div', {class: 'grid3'},
-      chartCard('Daily Meta spend', 'Last 60 days', [
-        {name: 'Meta', color: col, area: true, values: d.map((x) => ({d: x.d, v: x.meta}))},
-        {name: 'Our creatives', color: css('--ours'), values: d.map((x) => ({d: x.d, v: x.ours}))}], {label: c.name + ' daily Meta spend', yfmt: F.short, tfmt: F.money}),
+      chartCard('Daily Meta spend', 'Last 60 days', spendSeries, {label: c.name + ' daily Meta spend', yfmt: F.short, tfmt: F.money}),
       chartCard('Meta ROAS', 'Meta-reported revenue ÷ Meta spend, daily', [
         {name: 'Meta ROAS', color: col, values: d.map((x) => ({d: x.d, v: x.meta ? x.rev / x.meta : null}))}], {label: c.name + ' daily Meta ROAS', yfmt: (v) => d3.format('.1f')(v) + '×', tfmt: F.x}),
-      chartCard('New-visitor share', 'Share of Meta visitors new to the site, daily', [
-        {name: 'Account', color: css('--dim'), values: d.map((x) => ({d: x.d, v: x.vis ? x.nv / x.vis : null}))},
-        {name: 'Our creatives', color: css('--ours'), values: d.map((x) => ({d: x.d, v: x.ours_vis ? x.ours_nv / x.ours_vis : null}))}], {label: c.name + ' new-visitor share', yfmt: d3.format('.0%'), tfmt: F.pct})));
+      chartCard('New-visitor share', 'Share of Meta visitors new to the site, daily', nvpSeries, {label: c.name + ' new-visitor share', yfmt: d3.format('.0%'), tfmt: F.pct})));
 
-    const pctOfMeta = s.mtd.meta;
-    main.append(h('div', {class: 'card'}, h('h2', {}, 'Our creatives this month'), h('p', {class: 'sub'}, 'Top 40 tagged ads by spend this month. Click a column to sort; names open the ad in Ads Manager.'),
+    if (live) main.append(h('div', {class: 'card'}, h('div', {class: 'card-h'}, h('h2', {}, 'Our creatives this month'), h('p', {class: 'sub'}, 'Highest spend first. Ad names open in Ads Manager.')),
       c.ours.length ? table([
         {label: 'Ad', cell: (a) => adCell(a, false)},
-        {label: 'Spend, month', sort: 'spend_m', fmt: F.money},
+        {label: 'Spend, month', sort: 'spend_m', cell: spendBar('spend_m', c.ours)},
         {label: 'Last 7 days', sort: 'spend_7', fmt: F.money},
         {label: 'Latest day', sort: 'spend_y', fmt: F.money},
         {label: 'Meta ROAS', sort: 'roas_m', fmt: F.x},
         {label: 'CPA', sort: 'cpa_m', fmt: F.money2},
         {label: 'NVP', sort: 'nvp_m', fmt: F.pct0},
-      ], c.ours, 'spend_m') : h('p', {class: 'empty'}, 'No spend on our tagged ads this month.')));
+      ], c.ours, 'spend_m', 10) : h('p', {class: 'empty'}, 'No spend on our tagged ads this month.')));
 
-    const meta7 = c.top.length ? null : null;
-    main.append(h('div', {class: 'card'}, h('h2', {}, 'Top ads in the account, last 7 days'), h('p', {class: 'sub'}, 'Whoever made them. OURS marks our tagged ads.' + (s.top_ad_share_7 ? ` The #1 ad carries ${F.pct0(s.top_ad_share_7)} of Meta spend.` : '')),
+    main.append(h('div', {class: 'card'}, h('div', {class: 'card-h'}, h('h2', {}, 'Top ads in the account, last 7 days'), h('p', {class: 'sub'}, 'Whoever made them. OURS marks our tagged ads.' + (s.top_ad_share_7 ? ` The #1 ad carries ${F.pct0(s.top_ad_share_7)} of Meta spend.` : ''))),
       table([
         {label: 'Ad', cell: (a) => adCell(a, true)},
-        {label: 'Spend, 7d', sort: 'spend_7', fmt: F.money},
+        {label: 'Spend, 7d', sort: 'spend_7', cell: spendBar('spend_7', c.top)},
         {label: 'Latest day', sort: 'spend_y', fmt: F.money},
         {label: 'Meta ROAS', sort: 'roas_7', fmt: F.x},
         {label: 'CPA', sort: 'cpa_7', fmt: F.money2},
         {label: 'NVP', sort: 'nvp_7', fmt: F.pct0},
         {label: 'CTR', sort: 'ctr_7', fmt: F.pct},
-      ], c.top, 'spend_7')));
+      ], c.top, 'spend_7', 10)));
   }
 
   boot();
