@@ -218,7 +218,7 @@
       tile('Blended ROAS, latest day', F.x(T.y.roas), [delta(T.y_vs7.roas), ' vs 7-day avg']),
       tile('Blended spend, month', F.money(T.mtd.blended), [delta(T.mtd_vs_pm.blended), ' vs same days last month']),
       tile('Order revenue, month', F.money(T.mtd.rev), ['ROAS ', h('b', {}, F.x(T.mtd.roas)), ' · NC CPA ', h('b', {}, F.money2(T.mtd.ncpa))]),
-      tile('Our creatives, month', F.money(T.mtd.ours), [h('b', {}, F.pct(T.mtd.ours_share)), ' of Meta spend · ', delta(T.mtd_vs_pm.ours), ' vs last month'], {ours: true}),
+      tile('Our creatives, month', F.money(T.mtd.ours), [h('b', {}, F.pct(T.mtd.ours_share)), ' of Meta spend · ', delta(T.mtd_vs_pm.ours), ' vs same days last month'], {ours: true}),
       tile('Our run rate', F.money(T.runrate), [h('b', {}, F.pct0(T.pace)), ' of ', F.short(T.target), ' · needs ', h('b', {}, F.short(T.needed_per_day)), '/day'], {ours: true, bar: T.pace, barColor: paceColor(T.pace >= 1 ? 'ok' : T.pace >= 0.5 ? 'warn' : 'bad')}),
       tile('Fees, projected month', F.money(T.fee_proj), ['so far ', h('b', {}, F.money(T.fee_so_far)), ' · at target ', h('b', {}, F.money(T.fee_target))], {ours: true})));
 
