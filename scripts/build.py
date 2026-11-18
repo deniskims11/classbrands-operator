@@ -34,19 +34,13 @@ def client_block(c, raw, target):
     mstart = end.replace(day=1)
     pm_end = mstart - timedelta(days=1)
     pm_start = pm_end.replace(day=1)
-    meta = {r["d"][:10]: r for r in raw["meta"]}
     days = []
-    for r in raw["summary"]:
-        d = r["d"][:10]
-        m = meta.get(d, {})
+    for m in sorted(raw["meta"], key=lambda r: r["d"]):
         days.append({
-            "d": d, "blended": f(r.get("blended_spend")), "meta": f(m.get("meta_spend")) or f(r.get("meta_spend")),
-            "rev": f(r.get("order_rev")), "orders": f(r.get("shop_orders")), "nc_orders": f(r.get("nc_orders")),
-            "nc_rev": f(r.get("nc_revenue")), "refunds": f(r.get("refunds")),
-            "meta_rev": f(m.get("meta_rev")), "meta_orders": f(m.get("meta_orders")),
-            "nv": f(m.get("nv")), "vis": f(m.get("vis")),
+            "d": m["d"][:10], "meta": f(m.get("meta_spend")), "rev": f(m.get("meta_rev")), "orders": f(m.get("meta_orders")),
+            "imps": f(m.get("imps")), "clk": f(m.get("clk")), "nv": f(m.get("nv")), "vis": f(m.get("vis")),
             "ours": f(m.get("ours_spend")), "ours_rev": f(m.get("ours_meta_rev")), "ours_orders": f(m.get("ours_meta_orders")),
-            "ours_nc": f(m.get("ours_nc_orders")), "ours_nv": f(m.get("ours_nv")), "ours_vis": f(m.get("ours_vis")),
+            "ours_nv": f(m.get("ours_nv")), "ours_vis": f(m.get("ours_vis")),
         })
     by = {x["d"]: x for x in days}
     full = [x for x in days if x["d"] <= raw["end"]]
@@ -65,33 +59,32 @@ def client_block(c, raw, target):
     td = by.get(today)
 
     def kpis(rows):
-        b, r, me, o = tot(rows, "blended"), tot(rows, "rev"), tot(rows, "meta"), tot(rows, "ours")
+        me, r, n, o = tot(rows, "meta"), tot(rows, "rev"), tot(rows, "orders"), tot(rows, "ours")
+        im = tot(rows, "imps")
         return {
-            "blended": b, "rev": r, "roas": div(r, b), "mer": div(b, r), "orders": tot(rows, "orders"),
-            "nc_orders": tot(rows, "nc_orders"), "ncpa": div(b, tot(rows, "nc_orders")), "aov": div(r, tot(rows, "orders")),
-            "meta": me, "meta_roas": div(tot(rows, "meta_rev"), me), "nvp": div(tot(rows, "nv"), tot(rows, "vis")),
+            "meta": me, "rev": r, "orders": n, "roas": div(r, me), "cpa": div(me, n), "aov": div(r, n),
+            "cpm": div(me * 1000, im), "ctr": div(tot(rows, "clk"), im), "nvp": div(tot(rows, "nv"), tot(rows, "vis")),
             "ours": o, "ours_share": div(o, me), "ours_roas": div(tot(rows, "ours_rev"), o),
             "ours_cpa": div(o, tot(rows, "ours_orders")), "ours_nvp": div(tot(rows, "ours_nv"), tot(rows, "ours_vis")),
-            "ours_nc": tot(rows, "ours_nc"),
         }
 
     Y, M, P7, PM, PMS = kpis([yd] if yd else []), kpis(mtd), kpis(p7), kpis(pm), kpis(pm_same)
-    avg7 = {k: (v / 7 if isinstance(v, float) and k in ("blended", "rev", "meta", "ours", "orders", "nc_orders") else v) for k, v in P7.items()}
+    avg7 = {k: (v / 7 if k in ("meta", "rev", "orders", "ours") else v) for k, v in P7.items()}
     runrate = M["ours"] / E * D if E else 0
     pace = runrate / target if target else None
     left = D - E
     s = {
         "as_of": raw["end"], "today": today, "days_elapsed": E, "days_in_month": D, "days_left": left,
         "y": Y, "avg7": avg7, "mtd": M, "pm": PM, "pm_same": PMS,
-        "today_blended": td["blended"] if td else None, "today_rev": td["rev"] if td else None, "today_ours": td["ours"] if td else None,
-        "y_vs7": {k: chg(Y[k], avg7[k]) for k in ("blended", "rev", "roas", "meta", "ours", "ncpa", "nvp", "ours_nvp")},
-        "mtd_vs_pm": {k: chg(M[k], PMS[k]) for k in ("blended", "rev", "roas", "ours", "ncpa", "mer")},
+        "today_meta": td["meta"] if td else None, "today_rev": td["rev"] if td else None, "today_ours": td["ours"] if td else None,
+        "y_vs7": {k: chg(Y[k], avg7[k]) for k in ("meta", "rev", "roas", "orders", "cpa", "cpm", "ctr", "ours", "nvp", "ours_nvp")},
+        "mtd_vs_pm": {k: chg(M[k], PMS[k]) for k in ("meta", "rev", "roas", "orders", "cpa", "cpm", "ctr", "ours")},
         "runrate": runrate, "target": target, "pace": pace,
         "needed_per_day": max(0.0, (target - M["ours"]) / left) if left > 0 else 0.0,
         "rate": c["rate"], "base": c["base"],
         "fee_so_far": c["base"] + c["rate"] * M["ours"], "fee_proj": c["base"] + c["rate"] * runrate,
         "fee_target": c["base"] + c["rate"] * target, "fee_pm": c["base"] + c["rate"] * PM["ours"],
-        "blended_runrate": M["blended"] / E * D if E else 0,
+        "meta_runrate": M["meta"] / E * D if E else 0,
     }
     lvl = "ok" if (pace or 0) >= 1 else "warn" if (pace or 0) >= 0.5 else "bad"
     s["status_level"], s["status"] = lvl, {"ok": "On pace", "warn": "Behind target", "bad": "Far behind target"}[lvl]
@@ -101,12 +94,12 @@ def client_block(c, raw, target):
     # Alerts: plain-language flags the operator should look at.
     alerts = []
     v = s["y_vs7"]
-    if v["blended"] is not None and v["blended"] <= -0.2:
-        alerts.append(["bad", f"Blended spend {abs(v['blended']):.0%} below its 7-day average"])
+    if v["meta"] is not None and v["meta"] <= -0.2:
+        alerts.append(["bad", f"Meta spend {abs(v['meta']):.0%} below its 7-day average"])
     if v["roas"] is not None and v["roas"] <= -0.15:
-        alerts.append(["bad", f"Blended ROAS {abs(v['roas']):.0%} below its 7-day average"])
+        alerts.append(["bad", f"Meta ROAS {abs(v['roas']):.0%} below its 7-day average"])
     if v["roas"] is not None and v["roas"] >= 0.15:
-        alerts.append(["ok", f"Blended ROAS {v['roas']:.0%} above its 7-day average"])
+        alerts.append(["ok", f"Meta ROAS {v['roas']:.0%} above its 7-day average"])
     if Y["ours"] == 0 and M["ours"] > 0:
         alerts.append(["warn", "No spend on our creatives on the latest day"])
     if v["ours"] is not None and v["ours"] <= -0.3 and Y["ours"] > 0:
@@ -148,7 +141,7 @@ def client_block(c, raw, target):
     s["launch_m"] = cohort(mstart.isoformat(), raw["end"])
     s["launch_pm"] = cohort(pm_start.isoformat(), pm_end.isoformat())
 
-    chart = [{k: x[k] for k in ("d", "blended", "rev", "meta", "ours", "nv", "vis", "ours_nv", "ours_vis")} for x in full[-60:]]
+    chart = [{k: x[k] for k in ("d", "meta", "rev", "ours", "nv", "vis", "ours_nv", "ours_vis")} for x in full[-60:]]
     return {"key": c["key"], "name": c["name"], "shop": c["shop"], "tag_label": c.get("tag_label", ""),
             "summary": s, "daily": chart, "top": top, "ours": ours}
 
@@ -169,14 +162,14 @@ def main():
     T = {}
     add = lambda path: sum((cl["summary"][path[0]][path[1]] if len(path) == 2 else cl["summary"][path[0]]) or 0 for cl in clients)
     for per in ("y", "mtd", "pm", "pm_same"):
-        T[per] = {k: add((per, k)) for k in ("blended", "rev", "orders", "nc_orders", "meta", "ours")}
+        T[per] = {k: add((per, k)) for k in ("meta", "rev", "orders", "ours")}
         t = T[per]
-        t["roas"], t["mer"], t["ncpa"], t["ours_share"] = div(t["rev"], t["blended"]), div(t["blended"], t["rev"]), div(t["blended"], t["nc_orders"]), div(t["ours"], t["meta"])
-    T["avg7"] = {k: add(("avg7", k)) for k in ("blended", "rev", "meta", "ours")}
-    T["y_vs7"] = {k: chg(T["y"][k], T["avg7"][k]) for k in ("blended", "rev", "ours")}
-    T["y_vs7"]["roas"] = chg(T["y"]["roas"], div(T["avg7"]["rev"], T["avg7"]["blended"]))
-    T["mtd_vs_pm"] = {k: chg(T["mtd"][k], T["pm_same"][k]) for k in ("blended", "rev", "ours", "roas")}
-    for k in ("runrate", "target", "needed_per_day", "fee_so_far", "fee_proj", "fee_target", "fee_pm", "base", "today_blended", "today_rev", "blended_runrate"):
+        t["roas"], t["cpa"], t["ours_share"] = div(t["rev"], t["meta"]), div(t["meta"], t["orders"]), div(t["ours"], t["meta"])
+    T["avg7"] = {k: add(("avg7", k)) for k in ("meta", "rev", "orders", "ours")}
+    T["avg7"]["roas"], T["avg7"]["cpa"] = div(T["avg7"]["rev"], T["avg7"]["meta"]), div(T["avg7"]["meta"], T["avg7"]["orders"])
+    T["y_vs7"] = {k: chg(T["y"][k], T["avg7"][k]) for k in ("meta", "rev", "ours", "roas", "cpa")}
+    T["mtd_vs_pm"] = {k: chg(T["mtd"][k], T["pm_same"][k]) for k in ("meta", "rev", "ours", "roas", "cpa")}
+    for k in ("runrate", "target", "needed_per_day", "fee_so_far", "fee_proj", "fee_target", "fee_pm", "base", "today_meta", "today_rev", "meta_runrate"):
         T[k] = add((k,))
     T["pace"] = div(T["runrate"], T["target"])
     T["as_of"] = max(cl["summary"]["as_of"] for cl in clients)
@@ -184,7 +177,7 @@ def main():
     gen = (RAW / "fetched_at.txt").read_text().strip() if (RAW / "fetched_at.txt").exists() else datetime.now(timezone.utc).isoformat()
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "latest.json").write_text(json.dumps({"generated_at": gen, "totals": T, "clients": clients}, separators=(",", ":")))
-    print(f"latest.json: {len(clients)} clients, as of {T['as_of']}, ours MTD ${T['mtd']['ours']:,.0f}, blended MTD ${T['mtd']['blended']:,.0f}")
+    print(f"latest.json: {len(clients)} clients, as of {T['as_of']}, ours MTD ${T['mtd']['ours']:,.0f}, Meta MTD ${T['mtd']['meta']:,.0f}")
 
 
 if __name__ == "__main__":

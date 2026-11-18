@@ -4,8 +4,8 @@
 Env: TW_API_KEYS (JSON {client key: Triple Whale API key}, one key per shop) and/or
 TW_API_KEY (fallback key used for any client not in TW_API_KEYS), plus CBO_CONFIG (JSON;
 locally ./config.json). Per shop:
-  summary  – daily blended spend / order revenue / orders / new customers (summary_metrics_tvf)
-  meta     – daily Meta spend + Meta-reported value + visitors, total and for our tagged ads
+  meta     – daily Meta spend, Meta-reported purchases and value, delivery and visitors,
+             total and for our tagged ads (Meta only; no other channels or store totals)
   ads      – per-ad totals for yesterday / last 7 days / month to date / last month
   launches – first spend day + lifetime spend of every tagged ad (hit rate)
 """
@@ -74,27 +74,15 @@ def main():
             failures.append(c["name"])
             continue
         try:
-            summary = sql(shop, f"""
-                SELECT toString(event_date) AS d,
-                  sum(spend) AS blended_spend,
-                  sumIf(spend, platform = 'facebook-ads') AS meta_spend,
-                  sum(gross_product_sales) - sum(discount_amount_for_product) + sum(shipping_price) + sum(taxes) AS order_rev,
-                  sumIf(orders, platform = 'shopify') AS shop_orders,
-                  sumIf(new_customer_orders, platform = 'shopify') AS nc_orders,
-                  sumIf(new_customer_revenue, platform = 'shopify') AS nc_revenue,
-                  sum(total_refunded_price) AS refunds
-                FROM summary_metrics_tvf()
-                WHERE event_date BETWEEN '{s}' AND '{t}'
-                GROUP BY d ORDER BY d""", s, t, key)
             meta = sql(shop, f"""
                 SELECT toString(event_date) AS d,
                   sum(spend) AS meta_spend, sum(channel_reported_conversion_value) AS meta_rev,
                   sum(channel_reported_conversions) AS meta_orders,
                   sum(new_visitors) AS nv, sum(unique_visitors) AS vis,
+                  sum(impressions) AS imps, sum(outbound_clicks) AS clk,
                   sumIf(spend, {tag}) AS ours_spend,
                   sumIf(channel_reported_conversion_value, {tag}) AS ours_meta_rev,
                   sumIf(channel_reported_conversions, {tag}) AS ours_meta_orders,
-                  sumIf(new_customer_orders, {tag}) AS ours_nc_orders,
                   sumIf(new_visitors, {tag}) AS ours_nv, sumIf(unique_visitors, {tag}) AS ours_vis
                 FROM pixel_joined_tvf()
                 WHERE {META} AND event_date BETWEEN '{s}' AND '{t}'
@@ -130,16 +118,16 @@ def main():
             print(f"  FAILED: {err}", flush=True)
             failures.append(c["name"])
             continue
-        if not summary:
-            print("  no summary rows", flush=True)
+        if not meta:
+            print("  no Meta rows", flush=True)
             failures.append(c["name"])
             continue
         (RAW / f"{c['key']}.json").write_text(json.dumps({
-            "key": c["key"], "shop": shop, "end": e, "today": t, "summary": summary, "meta": meta,
+            "key": c["key"], "shop": shop, "end": e, "today": t, "meta": meta,
             "ads": ads, "launches": launches}))
         f = lambda rows, k: sum(float(r.get(k) or 0) for r in rows)
-        y = [r for r in summary if r["d"] == e]
-        print(f"  {len(summary)} days · {e}: blended ${f(y, 'blended_spend'):,.0f}, order rev ${f(y, 'order_rev'):,.0f} · "
+        y = [r for r in meta if r["d"] == e]
+        print(f"  {len(meta)} days · {e}: Meta spend ${f(y, 'meta_spend'):,.0f}, Meta revenue ${f(y, 'meta_rev'):,.0f} · "
               f"ads {len(ads)} ({sum(int(float(a.get('ours') or 0)) for a in ads)} ours) · launches {len(launches)}", flush=True)
     (RAW / "fetched_at.txt").write_text(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     if len(failures) == len(cfg["clients"]):

@@ -12,16 +12,14 @@ cfg = json.loads((ROOT / "config.json").read_text())
 SCALE = {"har": (66000, 0.98, 0.05), "nr": (24000, 4.2, 0.0), "blu": (46000, 1.45, 0.03), "seo": (9000, 1.55, 0.35)}
 for c in cfg["clients"]:
     base, roas, share = SCALE[c["key"]]
-    summary, meta = [], []
+    meta = []
     for i in range(90, -2, -1):
         d = end - timedelta(days=i)
         b = base * random.uniform(0.85, 1.15) * (0.7 if i == -1 else 1)
         m = b * 0.9
         o = m * share * random.uniform(0.7, 1.3)
-        summary.append({"d": d.isoformat(), "blended_spend": b, "meta_spend": m, "order_rev": b * roas * random.uniform(.9, 1.1),
-                        "shop_orders": b / 60, "nc_orders": b / 95, "nc_revenue": b * .6, "refunds": b * .02})
-        meta.append({"d": d.isoformat(), "meta_spend": m, "meta_rev": m * roas * .6, "meta_orders": m / 70, "nv": m / 7, "vis": m / 3,
-                     "ours_spend": o, "ours_meta_rev": o * roas * .55, "ours_meta_orders": o / 80, "ours_nc_orders": o / 90,
+        meta.append({"d": d.isoformat(), "meta_spend": m, "meta_rev": m * roas * .6, "meta_orders": m / 70, "nv": m / 7, "vis": m / 3, "imps": m * 50, "clk": m * .6,
+                     "ours_spend": o, "ours_meta_rev": o * roas * .55, "ours_meta_orders": o / 80,
                      "ours_nv": o / 5, "ours_vis": o / 2.6})
     ads = []
     for k in range(60):
@@ -35,6 +33,6 @@ for c in cfg["clients"]:
     launches = [{"id": str(k), "name": "x", "first_day": (end - timedelta(days=random.randint(0, 60))).isoformat(),
                  "life_spend": random.paretovariate(1.2) * 300} for k in range(40)]
     (RAW / f"{c['key']}.json").write_text(json.dumps({"key": c["key"], "shop": c["shop"], "end": end.isoformat(),
-        "today": (end + timedelta(days=1)).isoformat(), "summary": summary, "meta": meta, "ads": ads, "launches": launches}))
+        "today": (end + timedelta(days=1)).isoformat(), "meta": meta, "ads": ads, "launches": launches}))
 (RAW / "fetched_at.txt").write_text("2026-11-17T22:00:00Z")
 print("sample raw written")
