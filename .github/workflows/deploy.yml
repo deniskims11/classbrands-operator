@@ -54,10 +54,28 @@ jobs:
           CBO_CONFIG: ${{ secrets.CBO_CONFIG }}
         run: python3 scripts/build.py
 
+      - name: Pull each brand's full dashboard data
+        env:
+          TW_API_KEY: ${{ secrets.TW_API_KEY }}
+          TW_API_KEYS: ${{ secrets.TW_API_KEYS }}
+          CBO_CONFIG: ${{ secrets.CBO_CONFIG }}
+        run: python3 scripts/brand_data.py
+
       - name: Encrypt
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: python3 scripts/encrypt_data.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build the brand dashboard app
+        working-directory: brand
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Copy the app into each brand's folder
+        run: for d in public/b/*/; do cp -R brand/dist/. "$d"; done
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

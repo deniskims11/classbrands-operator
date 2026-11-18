@@ -4,3 +4,6 @@ public/data/
 artifact/
 .DS_Store
 __pycache__/
+public/b/
+brand/node_modules/
+brand/dist/

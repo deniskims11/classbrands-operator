@@ -143,6 +143,7 @@ def client_block(c, raw, target):
 
     chart = [{k: x[k] for k in ("d", "meta", "rev", "ours", "nv", "vis", "ours_nv", "ours_vis")} for x in full[-60:]]
     return {"key": c["key"], "name": c["name"], "shop": c["shop"], "tag_label": c.get("tag_label", ""),
+            "dashboard": c.get("dashboard_url") or f"b/{c['key']}/",
             "summary": s, "daily": chart, "top": top, "ours": ours}
 
 

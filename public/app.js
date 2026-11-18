@@ -226,6 +226,7 @@
     const rows = C.map((c, i) => ({c, i, ...flat(c)}));
     const cols = [
       {label: 'Client', cell: (r) => h('td', {}, h('button', {class: 'cl', onclick: () => go(slug(r.c.name))}, h('span', {class: 'dot', style: 'background:' + color(r.i)}), r.c.name))},
+      {label: 'Full dashboard', cell: (r) => h('td', {}, fullLink(r.c, 'Open ↗'))},
       {label: 'Status', cell: (r) => h('td', {}, pill(r.c.summary.status_level, r.c.summary.status))},
       {label: 'Meta spend, 30d', cell: (r) => h('td', {}, spark(r.c.daily.slice(-30).map((d) => d.meta), color(r.i)))},
       {label: 'Meta, latest', sort: 'y_meta', fmt: F.money},
@@ -248,6 +249,11 @@
       chartCard('Daily Meta spend', 'Last 60 days', series, {label: 'Daily Meta spend by client', yfmt: F.short, tfmt: F.money}),
       chartCard('Daily spend on our creatives', 'Meta ads carrying our tag, last 60 days', oursSeries, {label: 'Daily spend on our creatives by client', yfmt: F.short, tfmt: F.money})));
   }
+  // Natural Rems keeps its own site; the other brands' dashboards live under b/<key>/.
+  function fullLink(c, text) {
+    const ext = /^https?:/.test(c.dashboard);
+    return h('a', {class: 'full-link', href: c.dashboard, target: ext ? '_blank' : null, rel: ext ? 'noopener' : null}, text);
+  }
   function flat(c) {
     const s = c.summary;
     return {y_meta: s.y.meta, y_vs7: s.y_vs7.meta, y_roas: s.y.roas, m_meta: s.mtd.meta, m_roas: s.mtd.roas, m_cpa: s.mtd.cpa,
@@ -257,7 +263,7 @@
   /* ---------- client ---------- */
   function clientView(main, c, i) {
     const s = c.summary, col = color(i);
-    main.append(h('div', {class: 'page-h'}, h('h1', {}, c.name), pill(s.status_level, s.status),
+    main.append(h('div', {class: 'page-h'}, h('h1', {}, c.name), pill(s.status_level, s.status), fullLink(c, 'Open full dashboard ↗'),
       h('span', {class: 'page-sub'}, `${c.shop} · fee ${F.pct0(s.rate)} + ${F.money(s.base)} base · ours = ${c.tag_label} · latest day ${F.day(s.as_of)}`)));
 
     main.append(h('h3', {class: 'sec-h'}, 'Meta · latest day'), h('div', {class: 'tiles'},

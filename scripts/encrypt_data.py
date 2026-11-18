@@ -28,23 +28,27 @@ def main():
         subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "cryptography"], check=True)
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    src = OUT / "latest.json"
-    raw = src.read_bytes()
-    meta = json.loads(raw)
-    if meta.get("encrypted"):
-        sys.exit("latest.json is already encrypted")
     key = hashlib.pbkdf2_hmac("sha256", pw.encode(), SALT, ITERATIONS, 32)
-    iv = os.urandom(12)
-    ct = AESGCM(key).encrypt(iv, gzip.compress(raw, 9), None)
     b64 = lambda b: base64.b64encode(b).decode()
-    src.write_text(json.dumps({
-        "encrypted": 1, "generated_at": meta.get("generated_at"),
-        "kdf": "PBKDF2-SHA256", "iterations": ITERATIONS, "salt": b64(SALT), "iv": b64(iv),
-        "data": b64(ct),
-    }, separators=(",", ":")))
+    brand_files = sorted((OUT.parent / "b").glob("*/data/latest.json"))
+    for src in [OUT / "latest.json"] + brand_files:
+        raw = src.read_bytes()
+        meta = json.loads(raw)
+        if meta.get("encrypted"):
+            if src in brand_files:  # last published copy, reused after a failed refresh
+                print(f"{src.parent.parent.name}: already encrypted, kept")
+                continue
+            sys.exit("latest.json is already encrypted")
+        iv = os.urandom(12)
+        ct = AESGCM(key).encrypt(iv, gzip.compress(raw, 9), None)
+        src.write_text(json.dumps({
+            "encrypted": 1, "generated_at": meta.get("generated_at"),
+            "kdf": "PBKDF2-SHA256", "iterations": ITERATIONS, "salt": b64(SALT), "iv": b64(iv),
+            "data": b64(ct),
+        }, separators=(",", ":")))
+        print(f"encrypted {src.relative_to(OUT.parent)}: {len(raw) / 1e6:.1f} MB -> {src.stat().st_size / 1e6:.1f} MB")
     # Plain snapshots must not be published either.
     shutil.rmtree(OUT / "history", ignore_errors=True)
-    print(f"encrypted latest.json: {len(raw) / 1e6:.1f} MB -> {src.stat().st_size / 1e6:.1f} MB")
 
 
 if __name__ == "__main__":
