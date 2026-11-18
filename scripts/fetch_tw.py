@@ -9,7 +9,7 @@ locally ./config.json). Per shop:
   ads      – per-ad totals for yesterday / last 7 days / month to date / last month
   launches – first spend day + lifetime spend of every tagged ad (hit rate)
 """
-import json, os, pathlib, sys, time
+import base64, gzip, hashlib, json, os, pathlib, re, sys, time
 from datetime import datetime, timedelta, timezone
 from urllib import request as urlreq
 from urllib.error import HTTPError
@@ -18,6 +18,11 @@ API = "https://api.triplewhale.com/api/v2/orcabase/api/sql"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RAW = ROOT / "raw"
 META = "channel = 'facebook-ads' AND model = 'Triple Attribution' AND attribution_window = '7_days'"
+LEDGER_URL = "https://deniskims11.github.io/classbrands-operator/data/ledger.json"
+LEDGER_OUT = ROOT / "public" / "data" / "ledger.json"
+# Ads launched from this day on also count as ours when they reuse one of our videos or images.
+# Older ads go by their names only.
+MEDIA_MATCH_FROM = "2026-11-18"
 
 
 def config():
@@ -45,7 +50,67 @@ def sql(shop, query, start, end, key, tries=4):
     return []
 
 
+def ledger_key(password, salt):
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 600_000, 32)
+
+
+def load_ledger(password):
+    """Our ad IDs and media from earlier runs. Triple Whale only keeps an ad's latest name, so this is
+    what keeps a renamed ad ours. It lives encrypted on the site, next to the dashboard data."""
+    if not password:
+        return {}
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    try:
+        req = urlreq.Request(f"{LEDGER_URL}?t={int(time.time())}", headers={"user-agent": "Mozilla/5.0 (classbrands-operator refresh)"})
+        with urlreq.urlopen(req, timeout=60) as r:
+            p = json.load(r)
+    except HTTPError as e:
+        if e.code == 404:
+            print("ledger: none yet, starting one", flush=True)
+            return {}
+        sys.exit(f"Could not read the ad ID ledger ({e.code}) — keeping the live dashboard as it is")
+    b = base64.b64decode
+    raw = AESGCM(ledger_key(password, b(p["salt"]))).decrypt(b(p["iv"]), b(p["data"]), None)
+    return json.loads(gzip.decompress(raw))
+
+
+def save_ledger(ledger, password):
+    if not password:
+        return
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    salt, iv = os.urandom(16), os.urandom(12)
+    ct = AESGCM(ledger_key(password, salt)).encrypt(iv, gzip.compress(json.dumps(ledger, separators=(",", ":")).encode()), None)
+    b = lambda x: base64.b64encode(x).decode()
+    LEDGER_OUT.parent.mkdir(parents=True, exist_ok=True)
+    LEDGER_OUT.write_text(json.dumps({"encrypted": 1, "salt": b(salt), "iv": b(iv), "data": b(ct)}))
+
+
+def media_key(row):
+    return row.get("vhash") or re.sub(r"\?.*", "", row.get("img") or "")
+
+
+def resolve_ours(rows, entry, today):
+    """Update one client's ledger entry from this run's ads and return the ad IDs that count as ours.
+    Once an ad ID is ours it stays ours. New ads reusing our media join it."""
+    ads, media = dict(entry.get("ads") or {}), set(entry.get("media") or [])
+    for r in rows:
+        if int(float(r.get("tagged") or 0)):
+            ads.setdefault(r["id"], today)
+    for r in rows:
+        if r["id"] in ads and media_key(r):
+            media.add(media_key(r))
+    matched = 0
+    for r in rows:
+        if r["id"] not in ads and media_key(r) in media and str(r.get("first_day"))[:10] >= MEDIA_MATCH_FROM:
+            ads[r["id"]] = today
+            matched += 1
+    entry.update(ads=ads, media=sorted(media))
+    return set(ads), matched
+
+
 def main():
+    password = os.environ.get("DASHBOARD_PASSWORD") or ""
+    ledger = load_ledger(password)
     keys = json.loads(os.environ.get("TW_API_KEYS") or "{}")
     fallback = os.environ.get("TW_API_KEY")
     if not keys and not fallback:
@@ -74,6 +139,20 @@ def main():
             failures.append(c["name"])
             continue
         try:
+            rows = sql(shop, f"""
+                SELECT toString(ad_id) AS id, max(toUInt8({tag})) AS tagged,
+                  argMaxIf(video_content_hash, event_date, video_content_hash != '') AS vhash,
+                  argMaxIf(ad_image_url, event_date, ad_image_url != '') AS img,
+                  toString(minIf(event_date, spend > 0)) AS first_day
+                FROM pixel_joined_tvf()
+                WHERE {META} AND event_date BETWEEN '{lookback}' AND '{t}'
+                GROUP BY id HAVING sum(spend) > 0""", lookback.isoformat(), t, key)
+            entry = ledger.setdefault(c["key"], {})
+            ours, matched = resolve_ours(rows, entry, t)
+            named = sum(1 for r in rows if int(float(r.get("tagged") or 0)))
+            print(f"  ours: {len(ours)} ad IDs ({named} by name now, {matched} new by same media)", flush=True)
+            if ours:
+                tag = f"({c['tag_sql']} OR toString(ad_id) IN (" + ",".join(f"'{i}'" for i in sorted(ours)) + "))"
             meta = sql(shop, f"""
                 SELECT toString(event_date) AS d,
                   sum(spend) AS meta_spend, sum(channel_reported_conversion_value) AS meta_rev,
@@ -112,7 +191,7 @@ def main():
                 SELECT toString(ad_id) AS id, argMax(ad_name, event_date) AS name,
                   toString(minIf(event_date, spend > 0)) AS first_day, sum(spend) AS life_spend
                 FROM pixel_joined_tvf()
-                WHERE {META} AND event_date BETWEEN '{lookback}' AND '{e}' AND ({c['tag_sql']})
+                WHERE {META} AND event_date BETWEEN '{lookback}' AND '{e}' AND {tag}
                 GROUP BY ad_id HAVING life_spend > 0""", lookback.isoformat(), e, key)
         except RuntimeError as err:
             print(f"  FAILED: {err}", flush=True)
@@ -132,6 +211,7 @@ def main():
     (RAW / "fetched_at.txt").write_text(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     if len(failures) == len(cfg["clients"]):
         sys.exit("Every shop failed — keeping the live dashboard as it is")
+    save_ledger(ledger, password)
     if failures:
         print(f"::warning::No fresh data for: {', '.join(failures)}")
 
