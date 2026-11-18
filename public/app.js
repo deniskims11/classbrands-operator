@@ -264,7 +264,7 @@
   function clientView(main, c, i) {
     const s = c.summary, col = color(i);
     main.append(h('div', {class: 'page-h'}, h('h1', {}, c.name), pill(s.status_level, s.status), fullLink(c, 'Open full dashboard ↗'),
-      h('span', {class: 'page-sub'}, `${c.shop} · fee ${F.pct0(s.rate)} + ${F.money(s.base)} base · ours = ${c.tag_label} · latest day ${F.day(s.as_of)}`)));
+      h('span', {class: 'page-sub'}, `${c.shop} · fee ${F.pct0(s.rate)} of spend on our creatives${s.base ? ' + ' + F.money(s.base) + ' base' : ''} · ours = ${c.tag_label} · latest day ${F.day(s.as_of)}`)));
 
     main.append(h('h3', {class: 'sec-h'}, 'Meta · latest day'), h('div', {class: 'tiles'},
       tile('Meta spend', F.money(s.y.meta), [delta(s.y_vs7.meta), ' vs 7-day avg · today ', h('b', {}, F.short(s.today_meta))]),
